@@ -553,13 +553,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toLocalMobile } from "../utils/phone";
 import { useAuth } from "../context/NewAuthContext";
+import { api } from "../api/client";
 import { useCartContext } from "../context/CartContext";
 import { colorMap } from "../context/CollectionsContext";
 
 import { Loader2, MapPin } from "lucide-react";
 import { Title } from "../components/Title";
 import { assets } from "../assets/assets";
-import { BASE_URL } from "../server/server";
 import ProfileInputTile from "../components/ProfileInputTile";
 import {
   ProfileSelectTile,
@@ -950,24 +950,13 @@ const PlaceOrder = () => {
 
   const handleCODPayment = async (orderPayload) => {
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/qikink/order`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(orderPayload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to create order");
-      }
+      // Through the shared client, so an expired session is refreshed.
+      const data = await api.post("/api/v1/qikink/order", orderPayload);
       if (!isBuyNow) {
         clearCart();
       }
-      navigate(`/successPage/${data.qikinkOrderId}`, {
+      // qikinkOrderId is null while Qikink confirmation is pending.
+      navigate(`/successPage/${data.qikinkOrderId || data.orderId}`, {
         state: { orderDetails: data },
       });
     } catch (error) {
@@ -989,18 +978,12 @@ const PlaceOrder = () => {
         throw new Error("Failed to load Razorpay script");
       }
       //step 1 initiate payment
-      const initResponse = await fetch(
-        `${BASE_URL}/api/v1/razorpay/initiate-payment`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ amount: orderPayload.totalAmount }),
-        }
+      // The full payload (not just the amount) lets the server create the
+      // order from Razorpay's webhook if this tab closes after paying.
+      const { razorpayOrderId } = await api.post(
+        "/api/v1/razorpay/initiate-payment",
+        orderPayload
       );
-      const { razorpayOrderId } = await initResponse.json();
       // console.log("Razorpay Order ID:", razorpayOrderId);
       //step 2 open razorpay payment window
       const options = {
@@ -1015,38 +998,26 @@ const PlaceOrder = () => {
         handler: async (response) => {
           try {
             // console.log("Inside handler Razorpay response:", response);
-            const paymentCompleteResponse = await fetch(
-              `${BASE_URL}/api/v1/razorpay/process-order`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${localStorage.getItem(
-                    "accessToken"
-                  )}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  ...orderPayload,
-                  paymentId: response.razorpay_payment_id,
-                  razorpayOrderId: razorpayOrderId,
-                  razorpaySignature: response.razorpay_signature,
-                }),
-              }
-            );
-            if (!paymentCompleteResponse.ok) {
-              throw new Error("Failed to verify payment");
-            }
-            const data = await paymentCompleteResponse.json();
+            const data = await api.post("/api/v1/razorpay/process-order", {
+              ...orderPayload,
+              paymentId: response.razorpay_payment_id,
+              razorpayOrderId: razorpayOrderId,
+              razorpaySignature: response.razorpay_signature,
+            });
             // console.log("Payment Complete Response:", data);
             if (!isBuyNow) {
               clearCart();
             }
             // console.log("Payment Complete Response: Next Navigate", data);
-            navigate(`/successPage/${data.qikinkOrderId}`, {
+            navigate(`/successPage/${data.qikinkOrderId || data.orderId}`, {
               state: { orderDetails: data },
             });
-          } catch (error) {
-            setError("Payment verification failed. Please contact support.");
+          } catch {
+            // The payment went through; the server finishes the order from
+            // Razorpay's webhook even if this call failed.
+            setError(
+              "We received your payment but could not confirm the order here. It will appear in My Orders within a few minutes; contact support if it does not."
+            );
             setIsLoading(false);
           } finally {
             setIsLoading(false);

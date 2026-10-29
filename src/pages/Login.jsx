@@ -257,9 +257,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/NewAuthContext";
+import { GoogleLogin } from "@react-oauth/google";
 import { Title } from "../components/Title";
 import { Loader2, Eye, EyeOff, Mail, Lock, AlertCircle } from "lucide-react";
-import { FcGoogle } from "react-icons/fc";
 
 function Login() {
   const [formData, setFormData] = useState({
@@ -345,11 +345,14 @@ function Login() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  // Google's own button returns an ID token, which the server verifies was
+  // issued for this site (#42).
+  const handleGoogleCredential = async ({ credential }) => {
     try {
-      googleLogin();
+      setErrors({});
+      await googleLogin(credential);
     } catch (error) {
-      console.error("Google login error:", error);
+      setErrors({ form: error.message || "Google sign-in failed. Please try again." });
     }
   };
 
@@ -545,14 +548,15 @@ function Login() {
           </div>
 
           {/* Google Sign-In Button */}
-          <button
-            onClick={handleGoogleLogin}
-            disabled={isSubmitting || isBlocked}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            <FcGoogle className="h-5 w-5" />
-            Sign in with Google
-          </button>
+          <div className={`flex justify-center ${isSubmitting || isBlocked ? "pointer-events-none opacity-50" : ""}`}>
+            <GoogleLogin
+              onSuccess={handleGoogleCredential}
+              onError={() => setErrors({ form: "Google sign-in failed. Please try again." })}
+              text="signin_with"
+              shape="pill"
+              width="320"
+            />
+          </div>
 
           {/* Sign Up Link */}
           <div className="mt-6 text-center">

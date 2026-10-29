@@ -1,95 +1,43 @@
-// src/context/WishlistContext.js
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useAuth } from "./NewAuthContext";
-import { BASE_URL } from "../server/server";
+import * as catalog from "../api/catalog";
 
 const WishlistContext = createContext();
 
+// The wishlist always belongs to the signed-in user: the API reads it from
+// the token, so no user id is ever sent (#30).
 export const WishlistProvider = ({ children }) => {
   const [wishlistItems, setWishlistItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const token = localStorage.getItem("accessToken");
+  const { user } = useAuth();
 
-  const { user, apiCall, logout } = useAuth();
-
-  // Fetch wishlist items
-  const fetchWishlist = async (userData = null) => {
-    const currentUser = userData || user;
-
-    if (!currentUser?._id) {
-      console.log("No user data available");
+  const fetchWishlist = useCallback(async () => {
+    if (!user?._id) {
+      setWishlistItems([]);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
-
-      const response = await apiCall("/api/v1/wishlist", {
-        method: "POST",
-        body: JSON.stringify({ userId: currentUser._id }),
-      });
-
-      if (response.success) {
-        // Filter out any items with null/undefined products
-        const validItems = (response.data.products || []).filter(
-          (item) => item?.product?._id
-        );
-        setWishlistItems(validItems);
-      } else {
-        throw new Error(response.message || "Failed to fetch wishlist");
-      }
+      setWishlistItems(await catalog.getWishlist());
     } catch (err) {
-      console.error("Wishlist fetch error:", err);
-      if (err.message.includes("token")) {
-        setError("Session expired. Please login again.");
-        logout();
-      } else {
-        setError(err.message);
-      }
+      setError(err.message);
       setWishlistItems([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?._id]);
 
-  // Effect to fetch wishlist when user or token changes
   useEffect(() => {
-    if (user?._id && token) {
-      fetchWishlist(user);
-    } else {
-      setError("User not authenticated");
-      setWishlistItems([]);
-    }
-  }, [user, token]);
+    fetchWishlist();
+  }, [fetchWishlist]);
 
-  // Add item to wishlist
   const addToWishlist = async (productId) => {
+    if (!user) throw new Error("Please log in to add to wishlist");
     try {
       setLoading(true);
-      if (!user) {
-        throw new Error("Please log in to add to wishlist");
-      }
-      const response = await fetch(`${BASE_URL}/api/v1/wishlist/add`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ productId, userId: user?._id }),
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        // Filter out any items with null/undefined products
-        const validItems = (data.data.products || []).filter(
-          (item) => item?.product?._id
-        );
-        setWishlistItems(validItems);
-      } else {
-        throw new Error(data.message);
-      }
+      setWishlistItems(await catalog.addToWishlist(productId));
     } catch (err) {
       setError(err.message);
       throw err;
@@ -99,68 +47,23 @@ export const WishlistProvider = ({ children }) => {
   };
 
   const removeFromWishlist = async (productId) => {
-    if (!user?._id) {
-      throw new Error("Please log in to remove from wishlist");
-    }
-
-    // Store current items for rollback
+    if (!user?._id) throw new Error("Please log in to remove from wishlist");
     const previousItems = [...wishlistItems];
-
-    // Optimistic update with null check
-    setWishlistItems((items) =>
-      items.filter(
-        (item) => item?.product?._id && item.product._id !== productId
-      )
-    );
-
+    setWishlistItems((items) => items.filter((item) => item?.product?._id !== productId));
     try {
-      const response = await fetch(
-        `${BASE_URL}/api/v1/wishlist/remove/${productId}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            userId: user._id,
-          }),
-        }
-      );
-      const data = await response.json();
-
-      if (!data.success) {
-        // Revert on error
-        setWishlistItems(previousItems);
-        throw new Error(data.message);
-      }
+      await catalog.removeFromWishlist(productId);
     } catch (err) {
-      // Revert on error
       setWishlistItems(previousItems);
       setError(err.message);
       throw err;
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Clear wishlist
   const clearWishlist = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${BASE_URL}/api/v1/wishlist/clear`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        setWishlistItems([]);
-      } else {
-        throw new Error(data.message);
-      }
+      await catalog.clearWishlist();
+      setWishlistItems([]);
     } catch (err) {
       setError(err.message);
       throw err;
@@ -169,10 +72,7 @@ export const WishlistProvider = ({ children }) => {
     }
   };
 
-  // Check if product is in wishlist
-  const isInWishlist = (productId) => {
-    return wishlistItems.some((item) => item?.product?._id === productId);
-  };
+  const isInWishlist = (productId) => wishlistItems.some((item) => item?.product?._id === productId);
 
   const value = {
     wishlistItems,
@@ -185,14 +85,9 @@ export const WishlistProvider = ({ children }) => {
     fetchWishlist,
   };
 
-  return (
-    <WishlistContext.Provider value={value}>
-      {children}
-    </WishlistContext.Provider>
-  );
+  return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>;
 };
 
-// Custom hook for using wishlist context
 export const useWishlist = () => {
   const context = useContext(WishlistContext);
   if (context === undefined) {

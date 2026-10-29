@@ -1,0 +1,117 @@
+// Catalog calls against /api/v2, returning v1-shaped data (see adapters.js).
+import { api } from "./client";
+import { legacySlug, toCollectionsData, toLegacyListItem, toLegacyProduct } from "./adapters";
+
+const PAGE_SIZE = 100;
+const MAX_PAGES = 10;
+
+let treePromise = null;
+
+/** The category tree, fetched once per page load. */
+export const getCategoryTree = () => {
+  treePromise ??= api
+    .get("/api/v2/categories/tree", { auth: false })
+    .then((data) => data.items ?? [])
+    .catch((error) => {
+      treePromise = null; // let the next caller retry
+      throw error;
+    });
+  return treePromise;
+};
+
+const categoriesById = async () => {
+  const map = new Map();
+  const walk = (nodes) =>
+    nodes.forEach((node) => {
+      map.set(node.id, node);
+      walk(node.children ?? []);
+    });
+  walk(await getCategoryTree());
+  return map;
+};
+
+export const getCollectionsData = async () => toCollectionsData(await getCategoryTree());
+
+/** Every page of a product list (the storefront filters client-side). */
+const allPages = async (path) => {
+  const items = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const separator = path.includes("?") ? "&" : "?";
+    const data = await api.get(`${path}${separator}page=${page}&size=${PAGE_SIZE}`, { auth: false });
+    items.push(...data.items);
+    if (page >= data.page.totalPages) break;
+  }
+  return items;
+};
+
+/**
+ * Finds a subcategory from the route parameters the storefront has always
+ * used: lowercased names with spaces as hyphens ("men's-clothing").
+ */
+const findSubcategory = (tree, categoryParam, subcategoryParam) => {
+  const matches = (node, param) => {
+    const wanted = decodeURIComponent(String(param ?? "")).toLowerCase();
+    return [legacySlug(node.name), node.name.toLowerCase(), node.slug].includes(wanted);
+  };
+  const parent = tree.find((top) => matches(top, categoryParam));
+  const candidates = parent ? parent.children ?? [] : tree.flatMap((top) => top.children ?? []);
+  return candidates.find((child) => matches(child, subcategoryParam)) ?? null;
+};
+
+export const getProductsInSubcategory = async (categoryParam, subcategoryParam) => {
+  const tree = await getCategoryTree();
+  const sub = findSubcategory(tree, categoryParam, subcategoryParam);
+  if (!sub) return [];
+  const byId = await categoriesById();
+  return (await allPages(`/api/v2/categories/${sub.slug}/products`)).map((item) => toLegacyListItem(item, byId));
+};
+
+export const getAllProducts = async () => {
+  const byId = await categoriesById();
+  return (await allPages("/api/v2/products")).map((item) => toLegacyListItem(item, byId));
+};
+
+/** A product by id or slug, with its recommendations, as a v1 product. */
+export const getProduct = async (idOrSlug) => {
+  const [detail, recommendations] = await Promise.all([
+    api.get(`/api/v2/products/${encodeURIComponent(idOrSlug)}`, { auth: false }),
+    api
+      .get(`/api/v2/products/${encodeURIComponent(idOrSlug)}/recommendations`, { auth: false })
+      .then((data) => data.items)
+      .catch(() => []),
+  ]);
+  return toLegacyProduct(detail, recommendations);
+};
+
+export const getColourImages = async (idOrSlug, colourCode) => {
+  const data = await api.get(
+    `/api/v2/products/${encodeURIComponent(idOrSlug)}/media?colour=${encodeURIComponent(colourCode)}`,
+    { auth: false },
+  );
+  return { success: true, images: data.images, colorCode: data.colour, totalImages: data.images.length };
+};
+
+export const getAllColourImages = async (idOrSlug) => {
+  const data = await api.get(`/api/v2/products/${encodeURIComponent(idOrSlug)}/media`, { auth: false });
+  const colorImages = data.byColour ?? {};
+  return {
+    success: true,
+    colorImages,
+    availableColors: Object.keys(colorImages),
+    totalColors: Object.keys(colorImages).length,
+  };
+};
+
+// --- wishlist (signed in; the user always comes from the token) ---------------
+
+const toWishlistItems = (data) =>
+  (data?.items ?? []).map((entry) => ({ product: toLegacyListItem(entry.product), addedAt: entry.addedAt }));
+
+export const getWishlist = async () => toWishlistItems(await api.get("/api/v2/wishlist"));
+
+export const addToWishlist = async (productId) =>
+  toWishlistItems(await api.post("/api/v2/wishlist/items", { productId }));
+
+export const removeFromWishlist = (productId) => api.delete(`/api/v2/wishlist/items/${productId}`);
+
+export const clearWishlist = () => api.delete("/api/v2/wishlist");
