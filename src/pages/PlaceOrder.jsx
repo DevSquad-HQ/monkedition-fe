@@ -551,6 +551,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { toLocalMobile } from "../utils/phone";
 import { useAuth } from "../context/NewAuthContext";
 import { useCartContext } from "../context/CartContext";
 import { colorMap } from "../context/CollectionsContext";
@@ -835,7 +836,7 @@ const PlaceOrder = () => {
         firstName: user.firstName || "",
         lastName: user.lastName || "",
         email: user.email || "",
-        phone: user.phone || "",
+        phone: toLocalMobile(user.phone),
         doorNo: user.address.doorNo || "",
         address: user.address.street || "",
         city: user.address.city || "",

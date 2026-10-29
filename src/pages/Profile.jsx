@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { toLocalMobile } from "../utils/phone";
 import { useAuth } from "../context/NewAuthContext";
 import Orders from "./Orders";
 import { Title } from "../components/Title";
@@ -35,7 +36,7 @@ const Profile = () => {
         firstName: user.firstName || "",
         lastName: user.lastName || "",
         email: user.email || "",
-        phone: user.phone || "",
+        phone: toLocalMobile(user.phone),
         avatar: user.avatar || "",
         address: {
           country: user.address?.country || "",
