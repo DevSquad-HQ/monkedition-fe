@@ -298,9 +298,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/NewAuthContext";
+import { GoogleLogin } from "@react-oauth/google";
 import { Title } from "../components/Title";
 import { Eye, EyeOff, Loader2, User, Mail, Phone, Lock, AlertCircle, CheckCircle, Shield } from "lucide-react";
-import { FcGoogle } from "react-icons/fc";
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -358,7 +358,7 @@ export default function Signup() {
     let feedback = [];
     
     const checks = {
-      length: password.length >= 8,
+      length: password.length >= 10, // the server rejects shorter passwords
       uppercase: /[A-Z]/.test(password),
       lowercase: /[a-z]/.test(password),
       number: /[0-9]/.test(password),
@@ -369,7 +369,7 @@ export default function Signup() {
       if (check) score += 1;
     });
 
-    if (!checks.length) feedback.push("At least 8 characters");
+    if (!checks.length) feedback.push("At least 10 characters");
     if (!checks.uppercase) feedback.push("One uppercase letter");
     if (!checks.number) feedback.push("One number");
     if (!checks.special) feedback.push("One special character");
@@ -406,6 +406,8 @@ export default function Signup() {
 
     if (!formData.password) {
       newErrors.password = "Password is required";
+    } else if (!passwordStrength.checks?.length) {
+      newErrors.password = "Password must be at least 10 characters";
     } else if (passwordStrength.score < 3) {
       newErrors.password = "Password must be stronger";
     }
@@ -420,12 +422,14 @@ export default function Signup() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleGoogleLogin = async () => {
+  // Google's own button returns an ID token, which the server verifies was
+  // issued for this site (#42).
+  const handleGoogleCredential = async ({ credential }) => {
     try {
-      googleLogin();
+      setErrors({});
+      await googleLogin(credential);
     } catch (error) {
-      console.error("Google login error:", error);
-      setErrors({ form: "Google signup failed. Please try again." });
+      setErrors({ form: error.message || "Google signup failed. Please try again." });
     }
   };
 
@@ -672,7 +676,7 @@ export default function Signup() {
                       ) : (
                         <div className="h-3 w-3 border border-gray-300 rounded-full" />
                       )}
-                      <span>8+ characters</span>
+                      <span>10+ characters</span>
                     </div>
                     <div className={`flex items-center space-x-1 ${
                       passwordStrength.checks.uppercase ? 'text-green-600' : 'text-gray-500'
@@ -779,14 +783,15 @@ export default function Signup() {
           </div>
 
           {/* Google Sign-Up Button */}
-          <button
-            onClick={handleGoogleLogin}
-            disabled={isSubmitting}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            <FcGoogle className="h-5 w-5" />
-            Sign up with Google
-          </button>
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleCredential}
+              onError={() => setErrors({ form: "Google signup failed. Please try again." })}
+              text="signup_with"
+              shape="pill"
+              width="320"
+            />
+          </div>
 
           {/* Sign In Link */}
           <div className="mt-6 text-center">

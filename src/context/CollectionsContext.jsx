@@ -1,6 +1,6 @@
 // CollectionsContext.js
 import React, { createContext, useState, useContext, useCallback } from "react";
-import { BASE_URL } from "../server/server";
+import * as catalog from "../api/catalog";
 
 const CollectionsContext = createContext({
   CollectionsData: {},
@@ -70,142 +70,63 @@ export const CollectionsProvider = ({ children }) => {
   // const [search, setSearch] = useState("");
   // const [showSearch, setShowSearch] = useState(false);
 
+  // Catalog data comes from /api/v2 through src/api/catalog.js, which returns
+  // the v1 shapes these pages were written against (P1-23).
   const fetchCollections = useCallback(async () => {
-    // console.log("Fetching collections started...");
-    if (CollectionsData && Object.keys(CollectionsData).length > 0) {
-      // console.log("CollectionsData already exists:", CollectionsData);
-      // console.log("CollectionsData already exists: ------>>");
-      return;
-    }
+    if (CollectionsData && Object.keys(CollectionsData).length > 0) return;
     setIsLoading(true);
     setError(null);
-
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/subcategories`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      });
-
-
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch collections");
-      }
-
-      const { success, data } = await response.json();
-      // console.log("API Response - success:", success);
-      // console.log("API Response - data:", data);
-            console.log("======?Fetch response received:", data);
-
-      if (!success) {
-        throw new Error("API returned unsuccessful response");
-      }
-
-      setCollectionsData(data);
-      // console.log("CollectionsData has been set:", data);
+      setCollectionsData(await catalog.getCollectionsData());
     } catch (err) {
       console.error("Error in fetchCollections:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
-      // console.log("Loading state set to false");
     }
   }, []);
 
   const fetchProducts = useCallback(async (category, subCategory) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/api/v1/products/${category}/${subCategory}`
-      );
-      const data = await response.json();
-      return data.products;
+      return await catalog.getProductsInSubcategory(category, subCategory);
     } catch (error) {
       console.error("Error fetching products:", error);
+      return [];
     }
-  });
+  }, []);
+
   const fetchProductColorImages = async (productId, colorCode) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/api/v1/product/${productId}/color/${colorCode}`
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        return {
-          success: true,
-          images: data.images,
-          colorCode: data.colorCode,
-          totalImages: data.totalImages,
-        };
-      } else {
-        console.error("Error fetching color images:", data.message);
-        return {
-          success: false,
-          message: data.message,
-          availableColors: data.availableColors || [],
-        };
-      }
+      return await catalog.getColourImages(productId, colorCode);
     } catch (error) {
       console.error("Error while fetching color images:", error);
-      return {
-        success: false,
-        message: "Network error while fetching images",
-      };
+      return { success: false, message: error.message };
     }
   };
 
   const fetchAllProductColorImages = async (productId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/api/v1/product/${productId}/colors`
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        return {
-          success: true,
-          colorImages: data.colorImages, // Object with color codes as keys and image arrays as values
-          availableColors: data.availableColors, // Array of available color codes
-          totalColors: data.totalColors,
-        };
-      } else {
-        console.error("Error fetching all color images:", data.message);
-        return {
-          success: false,
-          message: data.message,
-        };
-      }
+      return await catalog.getAllColourImages(productId);
     } catch (error) {
       console.error("Error while fetching all color images:", error);
-      return {
-        success: false,
-        message: "Network error while fetching color images",
-      };
+      return { success: false, message: error.message };
     }
   };
 
   const fetchSpecificProduct = async (productID) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/api/v1/product/${productID}?includeRecommendations=true`
-      );
-      const data = await response.json();
-      return data;
+      return await catalog.getProduct(productID);
     } catch (error) {
-      console.log("error while fetching product data");
+      console.error("Error while fetching product data:", error);
     }
   };
 
   const fetchAllProducts = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/products`);
-      const data = await response.json();
-      return data.products;
+      return await catalog.getAllProducts();
     } catch (error) {
       console.error("Error fetching products:", error);
+      return [];
     }
   };
 
@@ -247,6 +168,7 @@ export const CollectionsProvider = ({ children }) => {
   };
 
   const calculateReview = (product) => {
+    if (!product?.reviews?.length) return [0, 5];
     let totalReviews = 0; // Use let instead of const
     for (let i = 0; i < product.reviews.length; i++) {
       totalReviews += product.reviews[i].rating;
