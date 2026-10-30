@@ -554,6 +554,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toLocalMobile } from "../utils/phone";
 import { useAuth } from "../context/NewAuthContext";
 import { api } from "../api/client";
+import { rupees } from "../api/adapters";
+import {
+  checkoutErrorMessage,
+  checkoutV2Enabled,
+  confirmPayment,
+  ensureAddress,
+  placeOrder,
+  quoteItems,
+} from "../api/checkout";
 import { useCartContext } from "../context/CartContext";
 import { colorMap } from "../context/CollectionsContext";
 
@@ -960,6 +969,8 @@ const PlaceOrder = () => {
         state: { orderDetails: data },
       });
     } catch (error) {
+      // v1 checkout has been switched off for this customer: use v2.
+      if (error.status === 410) return await placeOnV2();
       setError(error.message || "An error occurred. Please try again.");
     } finally {
       if (paymentMethod === "COD") {
@@ -1040,9 +1051,91 @@ const PlaceOrder = () => {
 
       razorpayInstance.open();
     } catch (error) {
+      if (error.status === 410) return await placeOnV2();
       setError(error.message || "An error occurred. Please try again.");
       setIsLoading(false);
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- checkout v2 (P3-12) -----------------------------------------------------
+  // The server prices the order from a quote, and Razorpay opens for the
+  // server's amount, never the page's.
+
+  const finishOrder = (order) => {
+    if (!isBuyNow) clearCart();
+    setIsLoading(false);
+    navigate(`/successPage/${order.orderNumber}`, { state: { orderDetails: order } });
+  };
+
+  const placeOnV2 = async () => {
+    const method = paymentMethod === "COD" ? "COD" : "PREPAID";
+    try {
+      const addressId = await ensureAddress(formData);
+      const quote = await quoteItems(cartSummary.items, method, {
+        pincode: formData.pincode.trim(),
+        state: formData.state.trim(),
+      });
+      const total = rupees(quote.grandTotal);
+      const shown = cartSummary.summary.finalTotal + (method === "COD" ? CODFee : 0);
+      if (
+        Math.abs(total - shown) >= 1 &&
+        !window.confirm(
+          `The total for this order is ₹${total} (this page showed ₹${shown}). Place the order?`,
+        )
+      ) {
+        setIsLoading(false);
+        return;
+      }
+      const order = await placeOrder({ quoteId: quote.quoteId, addressId, paymentMethod: method });
+      if (method === "COD") {
+        finishOrder(order);
+        return;
+      }
+
+      if (!(await loadScript("https://checkout.razorpay.com/v1/checkout.js"))) {
+        throw new Error("Could not load the payment window. Please check your connection and try again.");
+      }
+      const razorpay = new window.Razorpay({
+        key: order.payment.keyId,
+        amount: String(order.payment.amount.amount),
+        currency: "INR",
+        order_id: order.payment.gatewayOrderId,
+        name: "Moons Flare",
+        description: `Order ${order.orderNumber}`,
+        image: "https://res.cloudinary.com/dra8tbz4z/image/upload/v1749202863/MF/L_pqzxzz.png",
+        prefill: {
+          name: `${formData.firstName} ${formData.lastName}`,
+          email: formData.email,
+          contact: formData.phone,
+        },
+        theme: { color: "#FDBA74" },
+        handler: async (response) => {
+          try {
+            await confirmPayment({
+              orderNumber: order.orderNumber,
+              gatewayOrderId: response.razorpay_order_id,
+              gatewayPaymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+            });
+          } catch {
+            // Paid: Razorpay's webhook confirms the order even if this call failed.
+          }
+          finishOrder(order);
+        },
+        modal: {
+          ondismiss: () => {
+            setError(
+              "Payment was not completed, so the order was not placed. You can place it again when you are ready.",
+            );
+            setIsLoading(false);
+          },
+        },
+      });
+      razorpay.open();
+    } catch (error) {
+      setError(checkoutErrorMessage(error));
       setIsLoading(false);
     }
   };
@@ -1072,6 +1165,10 @@ const PlaceOrder = () => {
     }
 
     setIsLoading(true);
+    if (await checkoutV2Enabled()) {
+      placeOnV2();
+      return;
+    }
     const orderPayload = createOrderPayload();
 
     try {
