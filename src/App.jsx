@@ -12,6 +12,9 @@ import Cart from "./pages/Cart";
 import Collection from "./pages/Collection";
 import Contact from "./pages/Contact";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
 import Orders from "./pages/Orders";
 import Product from "./pages/Product";
 import Navbar from "./components/Navbar/Navbar";
@@ -96,6 +99,9 @@ function App() {
 
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route
                     path="/successPage/:qiKinkOrderId"

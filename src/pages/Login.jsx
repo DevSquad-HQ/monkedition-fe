@@ -518,6 +518,11 @@ function Login() {
                   <span>{errors.password}</span>
                 </p>
               )}
+              <div className="text-right">
+                <Link to="/forgot-password" className="text-xs text-orange-500 hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
             </div>
 
             {/* Submit Button */}
