@@ -201,7 +201,7 @@
 //       // console.log("Razorpay Order ID:", razorpayOrderId);
 //       //step 2 open razorpay payment window
 //       const options = {
-//         key: "rzp_test_p8QC4dYgeOwM4f",
+//         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
 //         amount: (orderPayload.totalAmount * 100).toString(),
 //         currency: "INR",
 //         name: "Moons Flare",
