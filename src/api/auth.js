@@ -49,3 +49,13 @@ export const logout = async () => {
 /** Profile and address edits still go to v1 until the address book moves. */
 export const updateUser = async (userId, updates) =>
   (await api.put(`/api/v1/user/update/${userId}`, updates)).user;
+
+/** Always succeeds for a well-formed email, so it cannot reveal who has an account. */
+export const requestPasswordReset = (email) =>
+  api.post("/api/v2/auth/password/forgot", { email }, { auth: false });
+
+export const resetPassword = (token, password) =>
+  api.post("/api/v2/auth/password/reset", { token, password }, { auth: false });
+
+export const verifyEmail = (token) =>
+  api.post("/api/v2/auth/email/verify", { token }, { auth: false });

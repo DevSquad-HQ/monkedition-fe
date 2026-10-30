@@ -1,0 +1,37 @@
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { verifyEmail } from "../api/auth";
+
+const VerifyEmail = () => {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
+  const [status, setStatus] = useState(token ? "checking" : "failed");
+  // The token works once, and StrictMode runs effects twice in development.
+  const sent = useRef(false);
+
+  useEffect(() => {
+    if (!token || sent.current) return;
+    sent.current = true;
+    verifyEmail(token)
+      .then(() => setStatus("verified"))
+      .catch(() => setStatus("failed"));
+  }, [token]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 space-y-5 text-center">
+        <h1 className="text-2xl font-bold text-gray-900">Confirm your email</h1>
+        <p className="text-sm text-gray-600">
+          {status === "checking" && "Confirming your email..."}
+          {status === "verified" && "Your email is confirmed. Thank you!"}
+          {status === "failed" && "This link is invalid or has expired."}
+        </p>
+        <Link to="/" className="block text-sm text-orange-500 hover:underline">
+          Continue shopping
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+export default VerifyEmail;
