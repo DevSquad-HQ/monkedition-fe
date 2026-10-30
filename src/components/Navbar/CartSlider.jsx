@@ -4,6 +4,7 @@ import { Title } from "../../components/Title";
 import { useCartContext } from "../../context/CartContext";
 import { colorMap } from "../../context/CollectionsContext";
 import CartTotal from "../CartTotal";
+import { toast } from "react-toastify";
 
 function CartSlider({ cartVisible, setCartVisible }) {
   const {
@@ -16,7 +17,8 @@ function CartSlider({ cartVisible, setCartVisible }) {
     getCartTotalWeight,
     isLoading,
     error,
-    extraCharge
+    extraCharge,
+    checkoutBlockedReason,
   } = useCartContext();
 
   const [total, setTotal] = useState(0);
@@ -48,6 +50,11 @@ function CartSlider({ cartVisible, setCartVisible }) {
   const handleCheckout = () => {
     // if (Object.keys(cart).length === 0) return; // Prevent checkout if cart is empty
     if (isLoading || error) return; // Prevent checkout if loading or error exists
+    // Server cart: an item that can't be bought blocks checkout, with why.
+    if (checkoutBlockedReason) {
+      toast.error(checkoutBlockedReason);
+      return;
+    }
 
     const cartItems = Object.keys(cart).flatMap((key) => cart[key]);
 
@@ -135,6 +142,13 @@ function CartSlider({ cartVisible, setCartVisible }) {
           <p className="text-lg font-medium text-red-500">
             Error: {error.message || "Something went wrong!"}
           </p>
+        </div>
+      )}
+
+      {/* Items that can't be bought yet (server cart) */}
+      {checkoutBlockedReason && !error && (
+        <div className="mx-5 mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          {checkoutBlockedReason}
         </div>
       )}
 
