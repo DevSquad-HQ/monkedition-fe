@@ -450,15 +450,16 @@ export default function Signup() {
       );
       navigate(returnTo, { replace: true });
     } catch (err) {
-      let errorMessage = "Signup failed. Please try again.";
-      
-      if (err.message.includes("email")) {
-        errorMessage = "This email is already registered. Please use a different email.";
-      } else if (err.message.includes("network")) {
-        errorMessage = "Network error. Please check your connection.";
+      // The server names the field at fault on a validation failure (v2 problem+json).
+      const fieldErrors = {};
+      for (const { path, message } of err.body?.errors ?? []) {
+        if (path && path in formData && !fieldErrors[path]) fieldErrors[path] = message;
       }
-      
-      setErrors({ form: errorMessage });
+      setErrors(
+        Object.keys(fieldErrors).length
+          ? fieldErrors
+          : { form: err.message || "Signup failed. Please try again." },
+      );
     } finally {
       setIsSubmitting(false);
     }
