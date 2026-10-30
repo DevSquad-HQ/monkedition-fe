@@ -340,7 +340,7 @@ function Product() {
    * Handles the "Add to Cart" action. Validates size and color,
    * then calls the `addToCart` function from the CartContext.
    */
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!size) {
       toast.warn("Please select a size.");
       return;
@@ -349,7 +349,13 @@ function Product() {
       toast.warn("Please select a color.");
       return;
     }
-    addToCart(product._id, size, selectedColor, product);
+    // The server cart can refuse (e.g. "Only 3 left in stock"); the browser
+    // cart returns nothing.
+    const result = await addToCart(product._id, size, selectedColor, product);
+    if (result?.ok === false) {
+      toast.error(result.message);
+      return;
+    }
     toast.info("Item added to cart!");
   };
 

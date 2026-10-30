@@ -1,4 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import * as cartApi from "../api/cart";
+import { rupees } from "../api/adapters";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./NewAuthContext";
 
@@ -36,9 +38,9 @@ const loadCartFromStorage = (userId) => {
   }
 };
 
-export const CartProvider = ({ children }) => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
+// The original browser-only cart. Used when CART_V2 is off, and as the
+// rollback when it is switched off again.
+const useLocalCart = (user, navigate) => {
   const [carts, setCarts] = useState({}); // Store all carts
   const [cart, setCart] = useState({}); // Current user's cart
   const [isLoading, setIsLoading] = useState(true);
@@ -271,6 +273,113 @@ export const CartProvider = ({ children }) => {
     extraCharge:300,
     clearCart,
   };
+  return value;
+};
+
+// The server cart (P2-10, CART_V2): prices, stock and totals come from
+// /api/v2/cart, so what the customer sees is what the server will charge.
+const useServerCart = (user, navigate, enabled) => {
+  const [view, setView] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const userId = user?._id ?? null;
+  const previousUser = useRef(userId);
+
+  const apply = useCallback(async (request) => {
+    try {
+      setError(null);
+      setView(await request);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err.message || "Could not update your cart" };
+    }
+  }, []);
+
+  // Load on start and whenever the signed-in user changes. Signing in folds
+  // the guest cart into the user's first.
+  useEffect(() => {
+    if (!enabled) return;
+    const signedIn = userId && !previousUser.current;
+    previousUser.current = userId;
+    setIsLoading(true);
+    (async () => {
+      try {
+        if (signedIn) await cartApi.mergeGuestCart().catch(() => null);
+        setView(await cartApi.fetchCart());
+        setError(null);
+      } catch (err) {
+        setError({ message: err.message || "Could not load your cart" });
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [enabled, userId]);
+
+  const lines = view?.lines ?? [];
+  const skuOf = (productId, size, color) =>
+    lines.find(
+      (line) =>
+        line.productId === productId &&
+        String(line.size) === String(size).toUpperCase() &&
+        line.colour?.code === color,
+    )?.sku;
+  const buyable = lines.filter((line) => !line.issue);
+  const sum = (pick) => buyable.reduce((total, line) => total + pick(line) * line.quantity, 0);
+
+  /** Adds one unit. Returns { ok: false, message } when the server refuses. */
+  const addToCart = async (id, size, color, product) => {
+    const wanted = `${color}-${String(size).toUpperCase()}`;
+    const sku =
+      product?.skus?.find((entry) => entry.colorSize === wanted)?.sku ??
+      product?.variants?.find((v) => v.colour?.code === color && v.size === String(size).toUpperCase())?.sku;
+    if (!sku) return { ok: false, message: "This colour and size is not available" };
+    return apply(cartApi.addLine(sku, 1));
+  };
+
+  const updateQuantity = async (itemId, size, color, quantity) => {
+    const sku = skuOf(itemId, size, color);
+    if (!sku) return { ok: false, message: "Item not in cart" };
+    return apply(quantity > 0 ? cartApi.setLineQuantity(sku, quantity) : cartApi.removeLine(sku));
+  };
+
+  const removeCartItem = async (id, size, color) => {
+    const sku = skuOf(id, size, color);
+    return sku ? apply(cartApi.removeLine(sku)) : { ok: true };
+  };
+
+  return {
+    addToCart,
+    getCartCount: () => view?.itemCount ?? 0,
+    updateQuantity,
+    navigate,
+    // Totals over the lines that can be bought, priced by the server.
+    getCartAmount: async () => rupees(view?.totals?.subtotal) ?? 0,
+    getCartOriginalAmount: async () => sum((line) => rupees(line.listPrice) ?? rupees(line.unitPrice) ?? 0),
+    getCartTotalWeight: async () => sum((line) => line.weightGrams ?? 0),
+    removeCartItem,
+    cart: cartApi.toLegacyCart(view),
+    extraCharge: 300,
+    clearCart: () => apply(cartApi.clearCart()),
+    isLoading,
+    error,
+    checkoutBlockedReason: cartApi.checkoutBlockedReason(view),
+    serverCart: true,
+  };
+};
+
+export const CartProvider = ({ children }) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [cartV2, setCartV2] = useState(false);
+
+  useEffect(() => {
+    cartApi.getFlags().then((flags) => setCartV2(Boolean(flags.cartV2)));
+  }, [user?._id]);
+
+  // Both hooks always run (rules of hooks); only one backs the context.
+  const local = useLocalCart(user, navigate);
+  const server = useServerCart(user, navigate, cartV2);
+  const value = cartV2 ? server : local;
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };
 
