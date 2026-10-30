@@ -3,6 +3,8 @@ import { useAuth } from "../context/NewAuthContext";
 import { Package, ChevronDown, ChevronUp, MapPin, Truck } from "lucide-react";
 import { Title } from "../components/Title";
 import { useCartContext } from "../context/CartContext";
+import { checkoutV2Enabled } from "../api/checkout";
+import { fetchMyOrders } from "../api/orders";
 
 const Orders = () => {
   const { user, apiCall, logout } = useAuth();
@@ -22,6 +24,12 @@ const Orders = () => {
       try {
         setLoading(true);
         setError(null);
+
+        // With checkout v2 on, orders live in v2 (v1's were copied there).
+        if (await checkoutV2Enabled()) {
+          setOrders(await fetchMyOrders());
+          return;
+        }
 
         const response = await apiCall(`/api/v1/orders/${user._id}`, {
           method: "GET",
@@ -88,7 +96,8 @@ const Orders = () => {
   // Calculate price information for an order
   const calculatePriceInfo = (order) => {
     // Get shipping fee based on payment method
-    const shipping = order.paymentMethod === "COD" ? 50 : 0;
+    // v2 orders carry their COD fee; v1 always charged ₹50.
+    const shipping = order.codFee ?? (order.paymentMethod === "COD" ? 50 : 0);
 
     // Calculate subtotal (total amount minus shipping)
     const subtotal = order.totalAmount - shipping;
@@ -219,9 +228,13 @@ const Orders = () => {
                                     </p>
                                     <div className="text-sm text-gray-500 space-y-1">
                                       <p>Quantity: {item.quantity}</p>
-                                      <p>
-                                        Size: {item.size}, Color: {item.color}
-                                      </p>
+                                      {item.size || item.color ? (
+                                        <p>
+                                          Size: {item.size}, Color: {item.color}
+                                        </p>
+                                      ) : (
+                                        item.sku && <p>Item: {item.sku}</p>
+                                      )}
                                     </div>
                                   </div>
                                   <span className="font-medium">
@@ -283,7 +296,7 @@ const Orders = () => {
                               </div>
                               <div className="flex justify-between text-sm text-gray-600">
                                 <span>Order ID</span>
-                                <span>{order.qikinkOrderId}</span>
+                                <span>{order.qikinkOrderId ?? order.orderId}</span>
                               </div>
                               {order.awbNo && (
                                 <div className="flex justify-between text-sm text-gray-600">
