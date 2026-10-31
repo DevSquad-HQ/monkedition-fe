@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -43,6 +43,13 @@ import NotFound from "./pages/NotFound";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import BottomNavBar from "./components/BottomNavbar";
 
+// Staff only, and in its own chunk so customers never download it.
+const Dashboard = lazy(() => import("./dashboard/Dashboard"));
+
+// The shop's header and footer, which the dashboard replaces with its own.
+const ShopChrome = ({ children }) =>
+  useLocation().pathname.startsWith("/dashboard") ? null : children;
+
 const ProtectedRoute = ({ children }) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
@@ -84,10 +91,20 @@ function App() {
             <CollectionsProvider>
               <CartProvider>
                 <ScrollToTop /> {/* Scroll restoration feature */}
-                <Navbar />
-                <BottomNavBar/>
-                <SearchBar />
+                <ShopChrome>
+                  <Navbar />
+                  <BottomNavBar/>
+                  <SearchBar />
+                </ShopChrome>
                 <Routes>
+                  <Route
+                    path="/dashboard/*"
+                    element={
+                      <Suspense fallback={null}>
+                        <Dashboard />
+                      </Suspense>
+                    }
+                  />
                   <Route path="/" element={<Home />} />
                   <Route path="/about" element={<About />} />
                   <Route path="/cart" element={<Cart />} />
@@ -134,7 +151,9 @@ function App() {
                   <Route path="*" element={<Navigate to="/404" replace />} />
                 </Routes>
                     
-                <Footer />
+                <ShopChrome>
+                  <Footer />
+                </ShopChrome>
                 
               </CartProvider>
             </CollectionsProvider>
