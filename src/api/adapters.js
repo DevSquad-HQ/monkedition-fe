@@ -26,7 +26,6 @@ export const toLegacyListItem = (item, categoriesById) => {
     color: (item.colours ?? []).map((colour) => colour.code),
     colours: item.colours ?? [],
     size: item.sizes ?? [],
-    stock: item.inStock ? 1 : 0,
     inStock: Boolean(item.inStock),
     category: item.categoryId
       ? { _id: item.categoryId, name: categoriesById?.get(item.categoryId)?.name ?? "" }
@@ -38,6 +37,10 @@ export const toLegacyListItem = (item, categoriesById) => {
 /** A v2 product detail (plus its recommendations) as a v1 product. */
 export const toLegacyProduct = (detail, recommendations = []) => ({
   ...toLegacyListItem(detail),
+  // The server gives a count only when it is low; otherwise any large number
+  // reads as "In Stock".
+  stock: detail.inStock ? detail.unitsLeft ?? Number.MAX_SAFE_INTEGER : 0,
+  weightGrams: detail.weightGrams ?? null,
   description: detail.description ?? "",
   details: detail.details ?? [],
   addInfo: detail.additionalInfo ?? "",
