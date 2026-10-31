@@ -4,7 +4,7 @@ import { Package, ChevronDown, ChevronUp, MapPin, Truck } from "lucide-react";
 import { Title } from "../components/Title";
 import { useCartContext } from "../context/CartContext";
 import { checkoutV2Enabled } from "../api/checkout";
-import { fetchMyOrders } from "../api/orders";
+import { cancelOrder, fetchMyOrders } from "../api/orders";
 
 const Orders = () => {
   const { user, apiCall, logout } = useAuth();
@@ -13,6 +13,26 @@ const Orders = () => {
   const [error, setError] = React.useState(null);
   const [expandedOrder, setExpandedOrder] = React.useState(null);
   const { extraCharge } = useCartContext();
+  const [cancellingOrder, setCancellingOrder] = React.useState(null);
+  const [cancelError, setCancelError] = React.useState(null);
+
+  const handleCancel = async (order) => {
+    const refundNote =
+      order.paymentMethod === "RAZORPAY" && order.paymentStatus === "PAID"
+        ? " Your payment will be refunded."
+        : "";
+    if (!window.confirm(`Cancel order ${order.orderId}?${refundNote}`)) return;
+    setCancellingOrder(order._id);
+    setCancelError(null);
+    try {
+      await cancelOrder(order.orderId);
+      setOrders(await fetchMyOrders());
+    } catch (err) {
+      setCancelError(err.message || "Could not cancel this order. Please try again.");
+    } finally {
+      setCancellingOrder(null);
+    }
+  };
 
   React.useEffect(() => {
     const fetchOrders = async () => {
@@ -211,6 +231,21 @@ const Orders = () => {
                     {expandedOrder === order._id && (
                       <div className="p-4 border-t bg-gray-50">
                         <div className="space-y-6">
+                          {order.canCancel && (
+                            <div className="flex flex-col items-end gap-2">
+                              <button
+                                type="button"
+                                disabled={cancellingOrder === order._id}
+                                onClick={() => handleCancel(order)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                {cancellingOrder === order._id ? "Cancelling..." : "Cancel order"}
+                              </button>
+                              {cancelError && (
+                                <p className="text-xs text-red-600">{cancelError}</p>
+                              )}
+                            </div>
+                          )}
                           {/* Order Items */}
                           <div>
                             <h4 className="font-medium text-gray-700 mb-3">
