@@ -14,6 +14,7 @@ import {
   Package,
   ScrollText,
   ShoppingBag,
+  Truck,
   Tag,
   Users,
   X,
@@ -23,6 +24,7 @@ import { Spinner } from "./ui";
 import Overview from "./pages/Overview";
 import Orders from "./pages/Orders";
 import OrderDetail from "./pages/OrderDetail";
+import QikinkOrders from "./pages/QikinkOrders";
 import Products from "./pages/Products";
 import ProductEditor from "./pages/ProductEditor";
 import Inventory from "./pages/Inventory";
@@ -37,6 +39,7 @@ import AuditLog from "./pages/AuditLog";
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: Home, end: true },
   { to: "/dashboard/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/dashboard/qikink", label: "Qikink orders", icon: Truck },
   { to: "/dashboard/products", label: "Products", icon: Package },
   { to: "/dashboard/inventory", label: "Inventory", icon: Boxes },
   { to: "/dashboard/categories", label: "Categories", icon: FolderTree },
@@ -125,6 +128,7 @@ const Dashboard = () => {
           <Route index element={<Overview />} />
           <Route path="orders" element={<Orders />} />
           <Route path="orders/:orderNumber" element={<OrderDetail />} />
+          <Route path="qikink" element={<QikinkOrders />} />
           <Route path="products" element={<Products />} />
           <Route path="products/new" element={<ProductEditor />} />
           <Route path="products/:id" element={<ProductEditor />} />
