@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { admin, query } from "../api";
-import { LinkButton, Badge, Button, Card, Notice, Page, Pagination, SearchBox, Spinner, Table, useLoad } from "../ui";
+import { LinkButton, Badge, Card, Notice, Page, Pagination, SearchBox, Spinner, Table, useLoad } from "../ui";
 
 const Products = () => {
   const navigate = useNavigate();
