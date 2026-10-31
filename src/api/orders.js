@@ -40,6 +40,7 @@ export const toLegacyOrder = (order) => ({
     email: order.deliveryAddress?.email,
   },
   cancelReason: order.cancelReason,
+  canCancel: order.canCancel ?? false,
 });
 
 /** Every order of the signed-in customer, newest first, with details. */
@@ -52,3 +53,11 @@ export const fetchMyOrders = async () => {
   );
   return details.map(toLegacyOrder);
 };
+
+/** Cancels the signed-in customer's order; a paid one is refunded by the server. */
+export const cancelOrder = (orderNumber) =>
+  api.post(
+    `/api/v2/orders/${encodeURIComponent(orderNumber)}/cancel`,
+    {},
+    { headers: { "Idempotency-Key": crypto.randomUUID() } },
+  );
