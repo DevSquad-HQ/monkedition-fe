@@ -78,6 +78,15 @@ const OrderDetail = () => {
       setTimeout(reload, 4000);
     });
 
+  const [qikinkStatus, setQikinkStatus] = useState("");
+  const readQikink = () =>
+    run(async () => {
+      const { reading, order: fresh } = await admin.post(`${path}/qikink-sync`);
+      setData(fresh);
+      setQikinkStatus(reading.found ? `Qikink says: ${reading.status}` : "Qikink has no order with this ID.");
+      setTimeout(reload, 4000);
+    });
+
   if (loading && !order) return <Page title={orderNumber}><Spinner /></Page>;
   if (!order) return <Page title={orderNumber}><Notice>{error}</Notice></Page>;
 
@@ -177,6 +186,12 @@ const OrderDetail = () => {
 
           <Card title="Shipment">
             <Row label="Status"><Badge value={order.shipment?.status} /></Row>
+            {order.shipment && (
+              <div className="py-2">
+                <Button disabled={busy} onClick={readQikink}>Check Qikink now</Button>
+                {qikinkStatus && <p role="status" className="mt-2 text-xs text-gray-600">{qikinkStatus}</p>}
+              </div>
+            )}
             <Row label="AWB">{order.shipment?.awb}</Row>
             <Row label="Courier">{order.shipment?.courier}</Row>
             {order.shipment?.trackingUrl && (
