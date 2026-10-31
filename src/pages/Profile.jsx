@@ -6,6 +6,8 @@ import { Title } from "../components/Title";
 import { Pencil, PencilOff, Loader2 } from "lucide-react";
 import ProfileInputTile from "../components/ProfileInputTile";
 import { assets } from "../assets/assets";
+import AddressBook from "../components/AddressBook";
+import AccountSecurity from "../components/AccountSecurity";
 
 const Profile = () => {
   const { user, isLoading, updateUser, logout } = useAuth();
@@ -20,14 +22,6 @@ const Profile = () => {
     email: "",
     phone: "",
     avatar: "",
-    address: {
-      country: "",
-      state: "",
-      city: "",
-      street: "",
-      pincode: "",
-      doorNo: "",
-    },
   });
 
   useEffect(() => {
@@ -38,36 +32,13 @@ const Profile = () => {
         email: user.email || "",
         phone: toLocalMobile(user.phone),
         avatar: user.avatar || "",
-        address: {
-          country: user.address?.country || "",
-          state: user.address?.state || "",
-          city: user.address?.city || "",
-          street: user.address?.street || "",
-          pincode: user.address?.pincode || "",
-          doorNo: user.address?.doorNo || "",
-        },
       });
     }
   }, [user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-
-    if (name.includes(".")) {
-      const [parent, child] = name.split(".");
-      setFormData((prev) => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent],
-          [child]: value,
-        },
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const validateForm = () => {
@@ -107,16 +78,8 @@ const Profile = () => {
       const updatePayload = {
         firstName: formData.firstName,
         lastName: formData.lastName,
-        avatar: formData.avatar,
-        phone: formData.phone,
-        address: {
-          country: formData.address.country,
-          state: formData.address.state,
-          city: formData.address.city,
-          street: formData.address.street,
-          pincode: formData.address.pincode,
-          doorNo: formData.address.doorNo,
-        },
+        avatar: formData.avatar.trim() || null,
+        phone: formData.phone.trim() || undefined,
       };
       await updateUser(updatePayload);
       setSuccess("Profile updated successfully!");
@@ -255,29 +218,6 @@ const Profile = () => {
             placeholder="+91 9999999999"
           />
 
-          {/* Address Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              { title: "Country", name: "address.country" },
-              { title: "State", name: "address.state" },
-              { title: "City", name: "address.city" },
-              { title: "Street", name: "address.street" },
-              { title: "Zip Code", name: "address.pincode" },
-              { title: "Door No.", name: "address.doorNo" },
-            ].map((field) => (
-              <ProfileInputTile
-                key={field.name}
-                isDisable={isEditing}
-                title={field.title}
-                name={field.name}
-                value={field.name
-                  .split(".")
-                  .reduce((obj, key) => obj?.[key] ?? "", formData)}
-                handleInputChange={handleInputChange}
-              />
-            ))}
-          </div>
-
           {isEditing && (
             <div className="flex justify-end">
               <button
@@ -297,6 +237,9 @@ const Profile = () => {
             </div>
           )}
         </form>
+
+        <AddressBook />
+        <AccountSecurity />
       </div>
 
       <div className="flex-1 border border-gray-100 shadow-md rounded-md h-[60vh] overflow-y-scroll">

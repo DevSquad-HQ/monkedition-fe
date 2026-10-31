@@ -91,10 +91,10 @@ export function NewAuthProvider({ children }) {
   const updateUser = async (updates) => {
     if (!user?._id) throw new Error("No authenticated user");
     const cleanUpdates = Object.fromEntries(
-      Object.entries(updates || {}).filter(([, value]) => value !== undefined && value !== null),
+      Object.entries(updates || {}).filter(([, value]) => value !== undefined),
     );
     if (Object.keys(cleanUpdates).length === 0) throw new Error("No valid updates provided");
-    await auth.updateUser(user._id, cleanUpdates);
+    await auth.updateProfile(cleanUpdates);
     return fetchUser();
   };
 

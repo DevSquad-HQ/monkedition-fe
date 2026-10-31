@@ -53,8 +53,9 @@ export const ensureAddress = async (form) => {
  * @param {Array<{ id?: string, sku?: string, color?: string, size?: string, quantity: number }>} items
  * @param {"COD" | "PREPAID"} paymentMethod
  * @param {{ pincode: string, state: string }} destination
+ * @param {string} [promoCode]
  */
-export const quoteItems = (items, paymentMethod, destination) =>
+export const quoteItems = (items, paymentMethod, destination, promoCode) =>
   api.post("/api/v2/quotes", {
     items: items.map((item) =>
       item.id && item.color && item.size
@@ -63,6 +64,7 @@ export const quoteItems = (items, paymentMethod, destination) =>
     ),
     paymentMethod,
     destination,
+    ...(promoCode && { promoCode }),
   });
 
 /** Places the order. One key per attempt, so a double click cannot order twice. */
@@ -76,6 +78,66 @@ export const placeOrder = ({ quoteId, addressId, paymentMethod }, idempotencyKey
 /** The browser's fast path after paying; the webhook does the same work. */
 export const confirmPayment = ({ orderNumber, gatewayOrderId, gatewayPaymentId, signature }) =>
   api.post("/api/v2/payments/confirm", { orderNumber, gatewayOrderId, gatewayPaymentId, signature });
+
+const PROMO_REASONS = {
+  NOT_FOUND: "That code does not exist.",
+  INACTIVE: "That code is no longer active.",
+  NOT_STARTED: "That code is not active yet.",
+  EXPIRED: "That code has expired.",
+  USER_LIMIT_REACHED: "You have already used that code.",
+  SIGN_IN_REQUIRED: "Please sign in to use that code.",
+};
+
+/** Why a promo code was not applied, in words for the customer. */
+export const promoErrorMessage = (reason) => PROMO_REASONS[reason] ?? "That code cannot be used on this order.";
+
+const loadRazorpay = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+/**
+ * Takes payment for an order already placed but not paid.
+ * @param {{ orderNumber: string, prefill?: { name?: string, email?: string, contact?: string } }} order
+ * @returns {Promise<boolean>} whether the customer paid
+ */
+export const payForOrder = async ({ orderNumber, prefill }) => {
+  const payment = await api.post(`/api/v2/orders/${encodeURIComponent(orderNumber)}/payment`, {});
+  if (!(await loadRazorpay())) {
+    throw new Error("Could not load the payment window. Please check your connection and try again.");
+  }
+  return new Promise((resolve) => {
+    new window.Razorpay({
+      key: payment.keyId,
+      amount: String(payment.amount.amount),
+      currency: "INR",
+      order_id: payment.gatewayOrderId,
+      name: "Moons Flare",
+      description: `Order ${orderNumber}`,
+      prefill,
+      theme: { color: "#FDBA74" },
+      handler: async (response) => {
+        try {
+          await confirmPayment({
+            orderNumber,
+            gatewayOrderId: response.razorpay_order_id,
+            gatewayPaymentId: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+          });
+        } catch {
+          // Paid: Razorpay's webhook confirms the order even if this call failed.
+        }
+        resolve(true);
+      },
+      modal: { ondismiss: () => resolve(false) },
+    }).open();
+  });
+};
 
 /** Why checkout failed, in words for the customer. */
 export const checkoutErrorMessage = (error) => {
