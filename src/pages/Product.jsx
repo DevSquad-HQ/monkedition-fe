@@ -850,10 +850,12 @@ function Product() {
             {/* Product features/details list */}
             <div className="mt-5 bg-gray-50 rounded-lg p-4">
               <dl className="text-sm text-gray-700 space-y-3">
-                <div className="flex">
-                  <dt className="w-32 font-medium text-gray-900">Net Weight</dt>
-                  <dd>{product?.weight} gms</dd>
-                </div>
+                {product?.weightGrams != null && (
+                  <div className="flex">
+                    <dt className="w-32 font-medium text-gray-900">Net Weight</dt>
+                    <dd>{product.weightGrams} gms</dd>
+                  </div>
+                )}
                 {product?.details?.map((item, index) => {
                   const [key, value] = item.split(":");
                   return (
