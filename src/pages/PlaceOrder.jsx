@@ -561,6 +561,7 @@ import {
   confirmPayment,
   ensureAddress,
   placeOrder,
+  promoErrorMessage,
   quoteItems,
 } from "../api/checkout";
 import { useCartContext } from "../context/CartContext";
@@ -594,6 +595,11 @@ const PlaceOrder = () => {
   const [error, setError] = useState(null);
   const [isRazorpayLoaded, setIsRazorpayLoaded] = useState(false);
   const [CODFee, setCODFee] = useState(50);
+  const [checkoutV2, setCheckoutV2] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState(null);
+  const [promoError, setPromoError] = useState(null);
+  const [applyingPromo, setApplyingPromo] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
 
   const total = cartSummary?.summary.totalAmount;
@@ -1063,6 +1069,37 @@ const PlaceOrder = () => {
   // The server prices the order from a quote, and Razorpay opens for the
   // server's amount, never the page's.
 
+  useEffect(() => {
+    checkoutV2Enabled().then(setCheckoutV2);
+  }, []);
+
+  const applyPromo = async () => {
+    setPromoError(null);
+    if (!formData.pincode.trim()) {
+      setPromoError("Please enter your delivery PIN code first.");
+      return;
+    }
+    setApplyingPromo(true);
+    try {
+      const quote = await quoteItems(
+        cartSummary.items,
+        paymentMethod === "COD" ? "COD" : "PREPAID",
+        { pincode: formData.pincode.trim(), state: formData.state.trim() },
+        promoInput.trim(),
+      );
+      if (quote.discount?.code) {
+        setPromo({ code: quote.discount.code, discount: rupees(quote.discount.amount) });
+      } else {
+        setPromo(null);
+        setPromoError(promoErrorMessage(quote.discount?.rejectedReason));
+      }
+    } catch (error) {
+      setPromoError(checkoutErrorMessage(error));
+    } finally {
+      setApplyingPromo(false);
+    }
+  };
+
   const finishOrder = (order) => {
     if (!isBuyNow) clearCart();
     setIsLoading(false);
@@ -1073,12 +1110,15 @@ const PlaceOrder = () => {
     const method = paymentMethod === "COD" ? "COD" : "PREPAID";
     try {
       const addressId = await ensureAddress(formData);
-      const quote = await quoteItems(cartSummary.items, method, {
-        pincode: formData.pincode.trim(),
-        state: formData.state.trim(),
-      });
+      const quote = await quoteItems(
+        cartSummary.items,
+        method,
+        { pincode: formData.pincode.trim(), state: formData.state.trim() },
+        promo?.code,
+      );
       const total = rupees(quote.grandTotal);
-      const shown = cartSummary.summary.finalTotal + (method === "COD" ? CODFee : 0);
+      const shown =
+        cartSummary.summary.finalTotal + (method === "COD" ? CODFee : 0) - (promo?.discount ?? 0);
       if (
         Math.abs(total - shown) >= 1 &&
         !window.confirm(
@@ -1125,11 +1165,16 @@ const PlaceOrder = () => {
           finishOrder(order);
         },
         modal: {
+          // The order exists and holds its stock until the payment window ends,
+          // so it is finished from My Orders; placing it again would duplicate it.
           ondismiss: () => {
-            setError(
-              "Payment was not completed, so the order was not placed. You can place it again when you are ready.",
-            );
+            if (!isBuyNow) clearCart();
             setIsLoading(false);
+            navigate("/orders", {
+              state: {
+                notice: `Your order ${order.orderNumber} is waiting for payment. Open it and choose "Pay now" within 15 minutes, or it will be cancelled.`,
+              },
+            });
           },
         },
       });
@@ -1508,11 +1553,62 @@ const PlaceOrder = () => {
                 <span>₹{Math.round(totalDiscount + shippingCost)}</span>
               </div>
 
+              {promo && (
+                <div className="flex justify-between text-green-700">
+                  <span>Promo {promo.code}</span>
+                  <span>-₹{promo.discount}</span>
+                </div>
+              )}
+
               <div className="flex justify-between font-semibold mt-2 pt-2 border-t text-xl">
                 <span>Total</span>
-                <span>₹{cartSummary?.summary.finalTotal + CODFee}</span>
+                <span>₹{cartSummary?.summary.finalTotal + CODFee - (promo?.discount ?? 0)}</span>
               </div>
             </div>
+
+            {checkoutV2 && (
+              <div className="mt-6">
+                <p className="font-medium mb-2">Promo code</p>
+                {promo ? (
+                  <div className="flex justify-between items-center text-sm">
+                    <span>
+                      <strong>{promo.code}</strong> applied
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPromo(null);
+                        setPromoInput("");
+                      }}
+                      className="text-orange-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      aria-label="Promo code"
+                      value={promoInput}
+                      maxLength={40}
+                      onChange={(e) => setPromoInput(e.target.value)}
+                      placeholder="Enter code"
+                      className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      disabled={applyingPromo || !promoInput.trim()}
+                      onClick={applyPromo}
+                      className="px-4 py-2 rounded bg-orange-300 text-black text-sm disabled:opacity-50"
+                    >
+                      {applyingPromo ? "Applying..." : "Apply"}
+                    </button>
+                  </div>
+                )}
+                {promoError && <p className="text-xs text-red-600 mt-1">{promoError}</p>}
+              </div>
+            )}
 
             <div className="mt-6">
               <p className="font-medium mb-4">Payment Method</p>

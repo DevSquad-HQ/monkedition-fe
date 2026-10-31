@@ -41,9 +41,47 @@ export const toLegacyOrder = (order) => ({
   },
   cancelReason: order.cancelReason,
   canCancel: order.canCancel ?? false,
+  canPay: order.status === "PENDING_PAYMENT" && order.paymentMethod === "PREPAID",
+  subtotal: rupees(order.subtotal),
+  discount: rupees(order.discount) ?? 0,
 });
 
-/** Every order of the signed-in customer, newest first, with details. */
+const PAYMENT_LABELS = {
+  PENDING: "Not paid yet",
+  AUTHORIZED: "Authorised",
+  PAID: "Paid",
+  FAILED: "Failed",
+  PARTIALLY_REFUNDED: "Partly refunded",
+  REFUNDED: "Refunded",
+};
+
+/** The payment state in words. A COD order is paid when it is delivered. */
+export const paymentLabel = (order) =>
+  order.paymentMethod === "COD" && order.paymentStatus === "PENDING"
+    ? "Pay on delivery"
+    : PAYMENT_LABELS[order.paymentStatus] ?? order.paymentStatus;
+
+const SHIPPED = new Set(["shipped", "delivered"]);
+
+/** Courier details exist once the parcel has shipped. Missing ones are not fatal. */
+const withTracking = async (order) => {
+  if (!SHIPPED.has(order.status)) return order;
+  try {
+    const { shipment } = await api.get(
+      `/api/v2/orders/${encodeURIComponent(order.orderId)}/tracking`,
+    );
+    return {
+      ...order,
+      awbNo: shipment?.awb ?? null,
+      courier: shipment?.courier ?? null,
+      trackingUrl: shipment?.trackingUrl ?? null,
+    };
+  } catch {
+    return order;
+  }
+};
+
+/** Every order of the signed-in customer, with details. The server sends newest first; the page, written for v1's order, shows the list reversed. */
 export const fetchMyOrders = async () => {
   const page = await api.get("/api/v2/orders?size=50");
   const details = await Promise.all(
@@ -51,7 +89,7 @@ export const fetchMyOrders = async () => {
       api.get(`/api/v2/orders/${encodeURIComponent(summary.orderNumber)}`),
     ),
   );
-  return details.map(toLegacyOrder);
+  return Promise.all(details.map(toLegacyOrder).reverse().map(withTracking));
 };
 
 /** Cancels the signed-in customer's order; a paid one is refunded by the server. */

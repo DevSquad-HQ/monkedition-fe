@@ -4,7 +4,9 @@ import { Package, ChevronDown, ChevronUp, MapPin, Truck } from "lucide-react";
 import { Title } from "../components/Title";
 import { useCartContext } from "../context/CartContext";
 import { checkoutV2Enabled } from "../api/checkout";
-import { cancelOrder, fetchMyOrders } from "../api/orders";
+import { useLocation } from "react-router-dom";
+import { payForOrder } from "../api/checkout";
+import { cancelOrder, fetchMyOrders, paymentLabel } from "../api/orders";
 
 const Orders = () => {
   const { user, apiCall, logout } = useAuth();
@@ -15,6 +17,34 @@ const Orders = () => {
   const { extraCharge } = useCartContext();
   const [cancellingOrder, setCancellingOrder] = React.useState(null);
   const [cancelError, setCancelError] = React.useState(null);
+
+  const location = useLocation();
+  const [payingOrder, setPayingOrder] = React.useState(null);
+  const [notice, setNotice] = React.useState(location.state?.notice ?? null);
+
+  const handlePay = async (order) => {
+    setPayingOrder(order._id);
+    setCancelError(null);
+    setNotice(null);
+    try {
+      const paid = await payForOrder({
+        orderNumber: order.orderId,
+        prefill: {
+          name: order.deliveryAddress?.fullName,
+          email: order.deliveryAddress?.email,
+          contact: order.deliveryAddress?.phone,
+        },
+      });
+      if (paid) {
+        setNotice(`Thank you! We received your payment for ${order.orderId}.`);
+        setOrders(await fetchMyOrders());
+      }
+    } catch (err) {
+      setCancelError(err.message || "Could not start the payment. Please try again.");
+    } finally {
+      setPayingOrder(null);
+    }
+  };
 
   const handleCancel = async (order) => {
     const refundNote =
@@ -182,6 +212,10 @@ const Orders = () => {
             </div>
           )}
 
+          {notice && (
+            <p className="p-4 mb-4 bg-orange-50 text-gray-800 text-sm rounded-md">{notice}</p>
+          )}
+
           {orders.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-500">No orders found</p>
@@ -217,8 +251,8 @@ const Orders = () => {
                             order.status
                           )}`}
                         >
-                          {order.status.charAt(0).toUpperCase() +
-                            order.status.slice(1)}
+                          {(order.status.charAt(0).toUpperCase() +
+                            order.status.slice(1)).replace(/_/g, " ")}
                         </span>
                         {expandedOrder === order._id ? (
                           <ChevronUp className="h-5 w-5 text-gray-400" />
@@ -231,16 +265,26 @@ const Orders = () => {
                     {expandedOrder === order._id && (
                       <div className="p-4 border-t bg-gray-50">
                         <div className="space-y-6">
-                          {order.canCancel && (
+                          {(order.canPay || order.canCancel) && (
                             <div className="flex flex-col items-end gap-2">
-                              <button
+                              {order.canPay && (
+                                <button
+                                  type="button"
+                                  disabled={payingOrder === order._id}
+                                  onClick={() => handlePay(order)}
+                                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-orange-300 text-black hover:bg-orange-400 disabled:opacity-50"
+                                >
+                                  {payingOrder === order._id ? "Opening payment..." : "Pay now"}
+                                </button>
+                              )}
+                              {order.canCancel && <button
                                 type="button"
                                 disabled={cancellingOrder === order._id}
                                 onClick={() => handleCancel(order)}
                                 className="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
                               >
                                 {cancellingOrder === order._id ? "Cancelling..." : "Cancel order"}
-                              </button>
+                              </button>}
                               {cancelError && (
                                 <p className="text-xs text-red-600">{cancelError}</p>
                               )}
@@ -352,7 +396,56 @@ const Orders = () => {
                                 </div>
                               )}
 
+                              {order.courier && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>Courier</span>
+                                  <span>{order.courier}</span>
+                                </div>
+                              )}
+                              {order.trackingUrl && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>Tracking</span>
+                                  <a
+                                    href={order.trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-orange-500 hover:underline"
+                                  >
+                                    Track your parcel
+                                  </a>
+                                </div>
+                              )}
+
                               {/* Price breakdown */}
+                              {order.paymentStatus && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>Payment</span>
+                                  <span>{paymentLabel(order)}</span>
+                                </div>
+                              )}
+                              <hr />
+                              {order.subtotal != null && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>Subtotal</span>
+                                  <span>{formatCurrency(order.subtotal)}</span>
+                                </div>
+                              )}
+                              {order.discount > 0 && (
+                                <div className="flex justify-between text-sm text-green-700">
+                                  <span>Discount</span>
+                                  <span>-{formatCurrency(order.discount)}</span>
+                                </div>
+                              )}
+                              {order.codFee > 0 && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>COD fee</span>
+                                  <span>{formatCurrency(order.codFee)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between text-sm font-semibold text-gray-800">
+                                <span>Total</span>
+                                <span>{formatCurrency(order.totalAmount)}</span>
+                              </div>
                             </div>
                           </div>
                         </div>

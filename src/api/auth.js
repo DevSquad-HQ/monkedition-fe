@@ -3,19 +3,19 @@ import { api, clearSession, getRefreshToken, storeTokens, storeUser } from "./cl
 import { toLegacyUser } from "./adapters";
 
 /**
- * The signed-in user in the shape the pages read. The saved address still
- * lives on the v1 user record until the address book moves to v2, so it is
- * merged in when available; failing that is not fatal.
+ * The signed-in user in the shape the pages read. Failing to load the address
+ * book is not fatal: the profile is enough to stay signed in.
  */
 export const loadUser = async (profile) => {
   const me = profile ?? (await api.get("/api/v2/me"));
-  let v1User = null;
+  let defaultAddress = null;
   try {
-    v1User = (await api.get(`/api/v1/user/${me.id}`)).user ?? null;
+    const { items = [] } = (await api.get("/api/v2/me/addresses")) ?? {};
+    defaultAddress = items.find((address) => address.isDefault) ?? items[0] ?? null;
   } catch {
     /* the profile is enough to stay signed in */
   }
-  const user = toLegacyUser(me, v1User);
+  const user = toLegacyUser(me, defaultAddress);
   storeUser(user);
   return user;
 };
@@ -46,9 +46,19 @@ export const logout = async () => {
   }
 };
 
-/** Profile and address edits still go to v1 until the address book moves. */
-export const updateUser = async (userId, updates) =>
-  (await api.put(`/api/v1/user/update/${userId}`, updates)).user;
+export const updateProfile = (updates) => api.patch("/api/v2/me", updates);
+
+export const listAddresses = async () =>
+  ((await api.get("/api/v2/me/addresses")) ?? {}).items ?? [];
+export const createAddress = (address) => api.post("/api/v2/me/addresses", address);
+export const updateAddress = (id, address) => api.patch(`/api/v2/me/addresses/${id}`, address);
+export const deleteAddress = (id) => api.delete(`/api/v2/me/addresses/${id}`);
+export const makeDefaultAddress = (id) => api.post(`/api/v2/me/addresses/${id}/default`, {});
+
+export const resendVerificationEmail = () => api.post("/api/v2/auth/email/resend", {});
+export const changePassword = (currentPassword, newPassword) =>
+  api.post("/api/v2/auth/password/change", { currentPassword, newPassword });
+export const logoutEverywhere = () => api.post("/api/v2/auth/logout-all", {});
 
 /** Always succeeds for a well-formed email, so it cannot reveal who has an account. */
 export const requestPasswordReset = (email) =>

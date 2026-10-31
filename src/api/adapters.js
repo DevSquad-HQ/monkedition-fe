@@ -52,21 +52,32 @@ export const toLegacyProduct = (detail, recommendations = []) => ({
 
 /**
  * The v2 profile as the user object the pages read (user._id, user.address).
- * The saved address still comes from v1 until the address book moves to v2.
+ * The saved address is the default entry of the address book.
  */
-export const toLegacyUser = (profile, v1User) => ({
-  ...(v1User ?? {}),
+export const toLegacyUser = (profile, defaultAddress) => ({
   _id: profile.id,
   id: profile.id,
   email: profile.email,
   firstName: profile.firstName ?? "",
   lastName: profile.lastName ?? "",
-  phone: profile.phone ?? v1User?.phone ?? "",
-  avatar: profile.avatar ?? v1User?.avatar,
+  phone: profile.phone ?? "",
+  avatar: profile.avatar ?? undefined,
   provider: profile.provider,
   roles: profile.roles,
   emailVerified: profile.emailVerified,
-  address: v1User?.address,
+  hasPassword: profile.hasPassword,
+  address: defaultAddress
+    ? {
+        doorNo: "",
+        street: [defaultAddress.line1, defaultAddress.line2, defaultAddress.landmark]
+          .filter(Boolean)
+          .join(", "),
+        city: defaultAddress.city,
+        state: defaultAddress.state,
+        pincode: defaultAddress.pincode,
+        country: defaultAddress.country === "IN" ? "India" : defaultAddress.country,
+      }
+    : undefined,
 });
 
 /** The v2 category tree as v1's { "Men's Clothing": [subcategory, …] }. */
